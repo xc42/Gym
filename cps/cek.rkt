@@ -6,7 +6,7 @@
 
 (struct IdK ())
 (struct LetK (vs es body env cont))
-(struct AppK (f args arg-vals env cont))
+(struct AppK (args vals env cont))
 
 (define (extend-env env k v)
   (match env
@@ -24,14 +24,13 @@
 	   (if (null? es)
 		 (interp-cps body env^ k)
 		 (interp-cps (car es) env^ (LetK (cdr vs) (cdr es) body env k))))]
-	[(AppK f args arg-vals env k)
+	[(AppK args vals env k)
 	 (cond
-	   [(null? args) (apply-proc f (reverse arg-vals))]
+	   [(null? args) 
+		(let ([vals-r (reverse vals)])
+		  (apply-proc (car vals-r) (cdr vals-r) k))]
 	   [else 
-		(let ([cont^ (if (null? arg-vals)
-						(AppK val (cdr args) '() env k)
-						(AppK val (cdr args) (cons val arg-vals) env k))])
-		   (interp-cps (car args) env cont^))])]
+		 (interp-cps (car args) env (AppK (cdr args) (cons val vals) env k))])]
 	))
 
 (define (apply-proc proc arg-vals cont)
@@ -53,13 +52,18 @@
 	[`(let ([,vs ,es] ...) ,body)
 	  (interp-cps (car es) env (LetK vs (cdr es) body env cont))]
 	[`(,f ,args ...) 
-	  (interp-cps f env (AppK '() args '() env cont))]
+	  (interp-cps f env (AppK args '() env cont))]
 	))
 
 
 (module+ test
   (test-begin
-	(let* ([env0 `((+ . ,+) (- . ,-) (* . ,*) (/ . ,/))]
-		   [interp (lambda (e) (interp-cps e env0 IdK))])
+	(let* ([env0 (Env `((+ . ,+) (- . ,-) (* . ,*) (/ . ,/)))]
+		   [interp (lambda (e) (interp-cps e env0 (IdK)))])
 	  (check-equal? (interp '2) 2)
+	  (check-equal? (interp '(+ 2 3)) 5)
+	  (check-equal? (interp '(let ([x 3]) (+ x 4))) 7)
+	  (check-equal? (interp '(let ([x 1] [y 3]) (- y x))) 2)
+	  (check-equal? (interp '(let ([db (lambda (x) (* x x))]) (db 4))) 16)
+	  (check-equal? (interp '(let ([x 3]) (let ([add3 (lambda (y) (+ y x))]) (add3 5)))) 8)
 	  )))
