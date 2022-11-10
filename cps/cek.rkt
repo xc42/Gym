@@ -1,9 +1,11 @@
 #lang racket
 (require rackunit)
 
+;;AST
 (struct Env (kvs))
 (struct Closure (ps body env))
 
+;;Continuation
 (struct IdK ())
 (struct LetK (vs es body env cont))
 (struct AppK (args vals env cont))
@@ -23,11 +25,11 @@
 	 (let ([env^ (extend-env env (car vs) val)])
 	   (if (null? es)
 		 (interp-cps body env^ k)
-		 (interp-cps (car es) env^ (LetK (cdr vs) (cdr es) body env k))))]
+		 (interp-cps (car es) env^ (LetK (cdr vs) (cdr es) body env^ k))))]
 	[(AppK args vals env k)
 	 (cond
 	   [(null? args) 
-		(let ([vals-r (reverse vals)])
+		(let ([vals-r (reverse (cons val vals))])
 		  (apply-proc (car vals-r) (cdr vals-r) k))]
 	   [else 
 		 (interp-cps (car args) env (AppK (cdr args) (cons val vals) env k))])]
@@ -59,7 +61,8 @@
 (module+ test
   (test-begin
 	(let* ([env0 (Env `((+ . ,+) (- . ,-) (* . ,*) (/ . ,/)))]
-		   [interp (lambda (e) (interp-cps e env0 (IdK)))])
+		   [k0 (IdK)]
+		   [interp (lambda (e) (interp-cps e env0 k0))])
 	  (check-equal? (interp '2) 2)
 	  (check-equal? (interp '(+ 2 3)) 5)
 	  (check-equal? (interp '(let ([x 3]) (+ x 4))) 7)
