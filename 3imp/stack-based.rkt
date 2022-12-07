@@ -32,6 +32,7 @@
 	  (let ([thnc (compile thn env nxt)]
 			[elsc (compile els env nxt)])
 		(compile pred env (Test thnc elsc)))]
+	[`(begin ,es ...) (foldr (lambda (expr x) (compile expr env x)) nxt es)]
 	[`(set! ,var ,val)
 	  (compile-lookup var env (lambda (n m)
 								(compile val env (Assign n m nxt))))]
@@ -50,48 +51,64 @@
 		[(eq? (car i) var) (ret n m)]
 		[else (inner (cdr i) (+ m 1))]))))
 
-;; a -- accumulator
-;; x -- instr
-;; e -- frame pointer
-;; s -- satck pointer
-(define (VM a x e s)
-  (define stack (make-vector 1000))
-  (define (push e s) (begin (vector-set! stack s e) (+ s 1)))
-  (define (index s i) (vector-ref stack (- (- s i) 1)))
-  (define (index-set! s i v) (vector-set! stack (- (- s i) 1) v))
-  (define (find-link n e)
-	(if (= n 0) e (find-link (- n 1) (index e -1))))
+
+(define VM 
+  (class object%
+	(super-new)
+
+	(define stack (make-vector 1000))
+
+	(define (push e s) 
+	  (vector-set! stack s e) 
+	  (+ s 1))
+
+	(define (index s i) 
+	  (vector-ref stack (- (- s i) 1)))
+
+	(define (index-set! s i v) 
+	  (vector-set! stack (- (- s i) 1) v))
 
 
-  (match x
-	[(? Halt?) a]
-	[(Cst val nxt) (VM val nxt e s)]
-	[(Prim proc n x) (VM (Prim proc n '()) x e s)]
-	[(Ref n m nxt) (VM (index (find-link n e) m) x e s)]
-	[(Closure code nxt) (VM (functional code e) x e s)]
-	[(Test thn els) (VM a (if a thn els) e s)]
-	[(Assign n m nxt) 
-	 (index-set! (find-link n e) m a)
-	 (VM a nxt e s)]
-	[(Frame ret nxt) (VM a nxt e (push ret (push e s)))]
-	[(Arg nxt) (VM a nxt e (push a s))]
-	[(? Apply?) 
-	 (match a
-	   [(functional code link)
-		(VM a code s (push link))]
-	   [(Prim proc n _)
-		(let ([args (for/fold ([args '()])
-					  ([i (in-range (- n 1) -1 -1)])
-					  (cons (index s i) args))])
-		  (VM (apply proc args) (Ret n) e s))])]
-	[(Ret n)
-	 (let ([s (- s n)])
-	   (VM a (index s 0) (index s 1) (- s 2)))]))
+	(define (find-link n e)
+	  (if (= n 0) 
+		e 
+		(find-link (- n 1) (index e -1))))
+	;; a -- accumulator
+	;; x -- instr
+	;; e -- frame pointer
+	;; s -- satck pointer
+	(define/public (run a x e s)
+	  (match x
+		[(? Halt?) a]
+		[(Cst val nxt) (run val nxt e s)]
+		[(Prim proc n x) (run (Prim proc n '()) x e s)]
+		[(Ref n m nxt) (run (index (find-link n e) m) x e s)]
+		[(Closure code nxt) (run (functional code e) x e s)]
+		[(Test thn els) (run a (if a thn els) e s)]
+		[(Assign n m nxt) 
+		 (index-set! (find-link n e) m a)
+		 (run a nxt e s)]
+		[(Frame ret nxt) (run a nxt e (push ret (push e s)))]
+		[(Arg nxt) (run a nxt e (push a s))]
+		[(? Apply?) 
+		 (match a
+		   [(functional code link)
+			(run a code s (push link))]
+		   [(Prim proc n _)
+			(let ([args (for/fold ([args '()])
+						  ([i (in-range (- n 1) -1 -1)])
+						  (cons (index s i) args))])
+			  (run (apply proc args) (Ret n) e s))])]
+		[(Ret n)
+		 (let ([s (- s n)])
+		   (run a (index s 0) (index s 1) (- s 2)))]))
+	) ;;class
+  );; VM
 
 
 (module+ test
-  (define (ckeq e v)
-	(check-equal? (VM 0 (compile e '() (Halt)) 0 0) v))
+  (define-syntax-rule (ckeq e v)
+	(check-equal? (send (new VM) run 0 (compile e '() (Halt)) 0 0) v))
 
   (test-case
 	"basic"
