@@ -100,9 +100,9 @@
 
 	  (test-case 
 		"try-catch"
-		(check-equal? (interp-cps '(try (+ 4 3) catch (ex) ex) env0 k0) 7)
 		(ckeq '(try (+ 4 3) catch (ex) ex) 7)
 		(ckeq '(let ([x 3]) (try (throw (* x x)) catch (ex) ex)) 9)
+		(ckeq '(try (throw (lambda (x) (+ x 1))) catch (f) (f 9)) 10)
 		(ckeq '(let ([f (lambda (x)
 						  (throw x))])
 				 (try (f 41)
@@ -111,4 +111,4 @@
 				 (let ([f (lambda (x) (+ 4 (g x)))])
 				   (try (f -3) catch (ex) (- ex)))) 3))
 	  ))
-  )
+)
