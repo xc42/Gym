@@ -37,8 +37,7 @@
 		  (Frame nxt c)))]
 	[`(begin ,es ...) (foldr compile nxt es)]
 	[`(let ([,vars ,vals] ...) ,body)
-
-	  42] ;;TODO
+	  (compile `((lambda ,vars ,body) ,@vals) nxt)] ;;TODO
 	[`(,f ,args ...)
 	  (for/fold ([c (compile f (Apply))] 
 				 #:result (if (Ret? nxt) c (Frame nxt c)))
@@ -97,7 +96,7 @@
 
 (module+ test
   (define env0 (list (make-hash `((+ . ,+) (- . ,-) (* . ,*) (/ . ,/)))))
-  (define (ckeq e val)
+  (define-syntax-rule (ckeq e val)
 	(let ([codec (compile e (Halt))])
 	  (check-equal? (VM '() codec env0 '() '()) val)))
 
@@ -122,8 +121,10 @@
 
   (test-case
 	"call/cc"
+	(ckeq '(+ 1 (call/cc (lambda (k) 1))) 2)
 	(ckeq '(+ 2 (call/cc (lambda (k) (k 3)))) 5)
 	(ckeq '(+ 2 (- (call/cc (lambda (k) (k 3))))) -1)
 	(ckeq '(call/cc (lambda (k) (* 4 (k 42)))) 42)
+	(ckeq '(let ([x (call/cc (lambda (k) (k 5)))]) (+ x 3)) 8)
 	)
   )
