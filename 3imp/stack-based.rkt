@@ -21,14 +21,21 @@
 
 (struct ClosureV (fvs code) #:transparent)
 
+(define primes (set '+ '- '* '/ '> '< '= '>= '<=))
+(define (prime? op) (set-member? primes op)) 
+(define (prime-arity op) 2)
+(define (prime-op op)
+  (let ([ns (make-base-namespace)])
+	(eval op ns)))
+
 (define (compile expr env nxt)
   (match expr
-	[(or '+ '- '* '/) ;;primitives
-	 (Prim (match expr ['+ +] ['- -] ['* *] ['/ /]) 2 nxt)]
 	[(? symbol?) 
-	 (compile-lookup expr env 
-					 (lambda (i) (Ref-Local i nxt))
-					 (lambda (i) (Ref-Free i nxt)))]
+	 (if (set-member? primes expr)
+	   (Prim (prime-op expr) 2 nxt)
+	   (compile-lookup expr env 
+					   (lambda (i) (Ref-Local i nxt))
+					   (lambda (i) (Ref-Free i nxt))))]
 	[`(lambda ,vs ,body)
 	  (let* ([fvs (free-vars expr)]
 			 [n (length vs)]
@@ -67,14 +74,14 @@
   (cond
 	[(index-of (car env) var) => loc] 
 	[(index-of (cdr env) var) => free] 
-	[else (error (format "~a not found" var))]))
+	[else (error (format "~a not found in env: ~a" var env))]))
 
 (define (free-vars expr)
   (define (collect e acc)
 	(set-union (free-vars e) acc))
 
   (match expr
-	[(? symbol?) (set expr)]
+	[(? symbol?) #:when (not (prime? expr)) (set expr)]
 	[`(lambda ,vars ,body) (set-subtract (free-vars body) (apply set vars))]
 	[`(let ([,vars ,vals] ...) ,body)
 	  (set-union (set-subtract (free-vars body) (apply set vars))
@@ -82,11 +89,9 @@
 	[`(if ,e1 ,e2 ,e3) 
 	  (set-union (free-vars e1) (free-vars e2) (free-vars e3))]
 	[`(begin ,es ...) (foldl collect (set) es)]
-	[`(set! ,var ,val) (free-vars val)]
+	[`(set! ,var ,val) (set-add (free-vars val) var)]
 	[`(call/cc ,f) (free-vars f)]
-	[(or `(,(or '+ '- '* '/) ,es ...) 
-		 `(,es ...))
-	 (foldl collect (set) es)]
+	[`(,es ...) (foldl collect (set) es)]
 	[_ (set)]))
 
 
@@ -114,8 +119,8 @@
 		(find-link (- n 1) (index e -1))))
 
 	(define (continuation s)
-	  (ClosureV (Ref-Local 0 (Resume (save-stack s) (Ret 0))) 
-			   '()))
+	  (ClosureV '() (Ref-Local 0 
+							   (Resume (save-stack s) (Ret 0)))))
 
 	(define (save-stack s) (vector-copy stack 0 s))
 
@@ -208,11 +213,39 @@
 				 
 	)
 
-  #;(test-case
+  (test-case
 	"call/cc"
+	(ckeq '(call/cc (lambda (k) (k 3))) 3)
 	(ckeq '(+ 2 (call/cc (lambda (k) (k 3)))) 5)
-	(ckeq '(+ 2 (- (call/cc (lambda (k) (k 3))))) -1)
+	(ckeq '(+ 2 (- 2 (call/cc (lambda (k) (k 3))))) 1)
 	(ckeq '(call/cc (lambda (k) (* 4 (k 42)))) 42)
+	(ckeq '(let ([x 5])
+			 (let ([y (call/cc (lambda (c)
+							   (c x)))])
+			 (- x y)))
+		  0)
+	(ckeq '(let ([f (lambda (resume x)
+                              (+ x (call/cc (lambda (cf)
+                                               (resume cf x)))))]
+                         [g (lambda (resume x)
+                              (resume (* x x)))])
+                     (f g 5))
+		  30)
+	#;(ckeq '(let ([c0 -1]
+				 [i 0]
+				 [total 0])
+			 (let ([y (call/cc (lambda (c)
+								 (begin
+								   (set! c0 c)
+								   100)))])
+			   (if (< i 10)
+				 (begin
+				   (set! total (+ total y))
+				   (set! i (+ i 1))
+				   (c0 i))
+				 total)))
+				   
+		  145)
 	)
 )
 
