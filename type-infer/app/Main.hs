@@ -1,6 +1,6 @@
 module Main where
 
-import TypeInfer (infer)
+-- import TypeInfer (infer)
 
 main :: IO ()
-main = show $ infer Number 4
+main = putStrLn "infer"

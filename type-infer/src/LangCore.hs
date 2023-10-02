@@ -22,9 +22,9 @@ data UOp = Not
       deriving Show
 
 
-data LType =
+data Type =
     TyInt
       | TyBool
-      | TyFunc [LType] LType
+      | TyFunc [Type] Type
       | TVar Int
       deriving Show
