@@ -27,4 +27,4 @@ data Type =
       | TyBool
       | TyFunc [Type] Type
       | TVar Int
-      deriving Show
+      deriving (Show, Eq)

@@ -33,7 +33,7 @@ collectConstrain cnt (Let binds body) env =
 
 collectConstrain cnt (Lambda ps body) env =
     (cnt'', TyFunc ts tbody, cs)
-    where ts = [TVar c| c <- [cnt .. cnt']]
+    where ts = [TVar c| c <- [cnt .. cnt'-1]]
           cnt' = cnt + length ps
           env' = extend env (Map.fromList $ zip ps ts)
           (cnt'', tbody, cs) = collectConstrain cnt' body env'
@@ -100,5 +100,5 @@ infer expr = let (_, ty, cs) = collectConstrain 0 expr []
                    applySubst TyInt _ = TyInt
                    applySubst (TyFunc tArgs tAns) sts = TyFunc (map (`applySubst` sts) tArgs) (applySubst tAns sts)
                    applySubst (TVar i) ((j, t):rest) = if i == j then t else applySubst (TVar i) rest
-                   applySubst _ [] = error "no substitution found"
+                   applySubst ty [] = ty
                    
