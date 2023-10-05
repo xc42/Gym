@@ -25,9 +25,10 @@ library
     hs-source-dirs: src
     build-depends: 
         base,
-        containers
+        containers,
+        parsec == 3.1.16.1
 
-    exposed-modules: TypeInfer,LangCore
+    exposed-modules: TypeInfer,LangCore,LangParser
 
 executable type-infer
     main-is:          Main.hs
@@ -41,10 +42,10 @@ executable type-infer
     hs-source-dirs:   app, src
     default-language: Haskell2010
 
-Test-Suite test-type-infer
+test-suite test-type-infer
     type: exitcode-stdio-1.0
     -- test-module: TestInfer
     main-is: TestInfer.hs
     hs-source-dirs: test, src
-    build-depends: base, containers, HUnit, Cabal
-    other-modules: TypeInfer, LangCore
+    build-depends: base, containers, HUnit, Cabal, parsec
+    other-modules: TypeInfer, LangParser, LangCore

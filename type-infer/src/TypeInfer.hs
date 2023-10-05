@@ -29,7 +29,8 @@ collectConstrain cnt (If e1 e2 e3) env =
 collectConstrain cnt (Let binds body) env = 
     let (cnt', ts, cs) = collectFromEs cnt (map snd binds) env
         env' = extend env (Map.fromList $ zip (map fst binds) ts)
-     in collectConstrain cnt' body env'
+        (cnt'', tbody, cs') = collectConstrain cnt' body env'
+        in (cnt'', tbody, cs ++ cs')
 
 collectConstrain cnt (Lambda ps body) env =
     (cnt'', TyFunc ts tbody, cs)
@@ -69,7 +70,7 @@ collectConstrain cnt (UPrim op e) env =
 
 
 collectFromEs :: Int -> [Expr] -> Environment -> (Int, [LC.Type], Constrains)
-collectEs cnt [] _ = (cnt, [], [])
+collectFromEs cnt [] _ = (cnt, [], [])
 collectFromEs cnt (e: es) env =
     let (cnt', ty, cs) = collectConstrain cnt e env
         (cnt'', ts, cs') = collectFromEs cnt' es env
@@ -84,10 +85,12 @@ solveConstrain (c:cs) sts =
       (TyInt, TyInt) -> solveConstrain cs sts
       (TyBool, TyBool) -> solveConstrain cs sts
       (TyFunc tArgs tAns, TyFunc tArgs' tAns') -> solveConstrain ((tAns, tAns'):zip tArgs tArgs' ++ cs) sts
-      (TVar i, ty) -> solveConstrain [(replace i ty tyi, replace i ty tyj)| (tyi, tyj) <- cs]  ((i, ty):sts)
-      (ty, TVar i) -> solveConstrain [(replace i ty tyi, replace i ty tyj)| (tyi, tyj) <- cs]  ((i, ty):sts)
+      (TVar i, ty) -> solveTVar i ty
+      (ty, TVar i) -> solveTVar i ty
       (_, _) -> error "contradiction in constrain"
-    where replace i ty0 tyv@(TVar j) = if i == j then ty0 else tyv
+    where solveTVar i ty = solveConstrain [(replace i ty tyi, replace i ty tyj)| (tyi, tyj) <- cs]
+                                          ((i, ty):sts)
+          replace i ty0 tyv@(TVar j) = if i == j then ty0 else tyv
           replace i ty0 (TyFunc tArgs tAns) = TyFunc (map (replace i ty0) tArgs) (replace i ty0 tAns)
           replace i ty0 ty = ty
 
@@ -95,10 +98,10 @@ solveConstrain (c:cs) sts =
 infer :: Expr -> LC.Type
 infer expr = let (_, ty, cs) = collectConstrain 0 expr []
                  sts = solveConstrain cs []
-              in applySubst ty sts
-             where applySubst TyBool _ = TyBool
-                   applySubst TyInt _ = TyInt
-                   applySubst (TyFunc tArgs tAns) sts = TyFunc (map (`applySubst` sts) tArgs) (applySubst tAns sts)
-                   applySubst (TVar i) ((j, t):rest) = if i == j then t else applySubst (TVar i) rest
-                   applySubst ty [] = ty
-                   
+                 applySubst TyBool _ = TyBool
+                 applySubst TyInt _ = TyInt
+                 applySubst (TyFunc tArgs tAns) sts = TyFunc (map (`applySubst` sts) tArgs) (applySubst tAns sts)
+                 applySubst ty@(TVar i) ((j, t):rest) = if i == j then applySubst t sts else applySubst ty rest
+                 applySubst ty [] = ty
+              in 
+                applySubst ty sts

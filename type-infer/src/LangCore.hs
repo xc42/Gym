@@ -1,6 +1,5 @@
 module LangCore where
 
-
 data Expr = 
     Number Int
       | Boolean Bool
@@ -11,15 +10,16 @@ data Expr =
       | App Expr [Expr]
       | BPrim BinOp Expr Expr
       | UPrim UOp Expr
-      deriving Show
+      deriving (Show, Eq)
 
 data BinOp = Add | Sub | Mul | Div | Mod
         | Equal | LT| GT | LE | GE
         | And | Or 
-      deriving Show
+      deriving (Show, Ord, Eq)
+
 
 data UOp = Not
-      deriving Show
+      deriving (Show, Eq)
 
 
 data Type =
@@ -28,3 +28,5 @@ data Type =
       | TyFunc [Type] Type
       | TVar Int
       deriving (Show, Eq)
+
+
