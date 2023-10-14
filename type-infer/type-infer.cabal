@@ -23,10 +23,7 @@ extra-source-files: CHANGELOG.md
 
 library
     hs-source-dirs: src
-    build-depends: 
-        base,
-        containers,
-        parsec == 3.1.16.1
+    build-depends: base, containers, mtl, parsec
 
     exposed-modules: TypeInfer,LangCore,LangParser
 
@@ -38,7 +35,7 @@ executable type-infer
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:    base, containers
+    build-depends:    base, containers, mtl
     hs-source-dirs:   app, src
     default-language: Haskell2010
 
@@ -47,5 +44,5 @@ test-suite test-type-infer
     -- test-module: TestInfer
     main-is: TestInfer.hs
     hs-source-dirs: test, src
-    build-depends: base, containers, HUnit, Cabal, parsec
+    build-depends: base, containers, HUnit, Cabal, parsec, mtl
     other-modules: TypeInfer, LangParser, LangCore

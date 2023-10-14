@@ -1,7 +1,7 @@
 module TypeInfer where
 
 import LangCore as LC
-
+import Control.Monad.State
 import qualified Data.Map as Map
 import Text.Printf
 
@@ -16,35 +16,39 @@ lookupEnv (frame:rest) name  = Map.findWithDefault (lookupEnv rest name) name fr
 extend :: Environment  -> Frame -> Environment 
 extend env f = f : env
 
-collectConstrain :: Int -> Expr -> Environment  -> (Int, LC.Type, Constrains)
-collectConstrain cnt (Number _) _  = (cnt, TyInt, [])
-collectConstrain cnt (Boolean _) _ = (cnt, TyBool, [])
-collectConstrain cnt (Var name) env = (cnt, lookupEnv env name, [])
-collectConstrain cnt (If e1 e2 e3) env =
-    let (cnt0, ty1, cs1) = collectConstrain cnt e1 env 
-        (cnt1, ty2, cs2) = collectConstrain cnt0 e2 env
-        (cnt2, ty3, cs3) = collectConstrain cnt1 e3 env
-     in (cnt2, ty2, [(ty1, TyBool), (ty2, ty3)] ++ cs1 ++ cs2 ++ cs3)
+newTVar :: State Int LC.Type
+newTVar = state (\cnt-> (TVar cnt, cnt+1))
 
-collectConstrain cnt (Let binds body) env = 
-    let (cnt', ts, cs) = collectFromEs cnt (map snd binds) env
-        env' = extend env (Map.fromList $ zip (map fst binds) ts)
-        (cnt'', tbody, cs') = collectConstrain cnt' body env'
-        in (cnt'', tbody, cs ++ cs')
+collectConstrain :: Expr -> Environment  -> State Int (LC.Type, Constrains)
+collectConstrain (Number _) _  = return (TyInt, [])
+collectConstrain (Boolean _) _ = return (TyBool, [])
+collectConstrain (Var name) env = return (lookupEnv env name, [])
+collectConstrain (If e1 e2 e3) env = do 
+    (ty1, cs1) <- collectConstrain e1 env 
+    (ty2, cs2) <- collectConstrain e2 env
+    (ty3, cs3) <- collectConstrain e3 env
+    return (ty2, [(ty1, TyBool), (ty2, ty3)] ++ cs1 ++ cs2 ++ cs3)
 
-collectConstrain cnt (Lambda ps body) env =
-    (cnt'', TyFunc ts tbody, cs)
-    where ts = [TVar c| c <- [cnt .. cnt'-1]]
-          cnt' = cnt + length ps
-          env' = extend env (Map.fromList $ zip ps ts)
-          (cnt'', tbody, cs) = collectConstrain cnt' body env'
+collectConstrain (Let binds body) env = do 
+    tsAndcs <- mapM ((`collectConstrain` env) . snd) binds
+    let env' = extend env (Map.fromList $ zip (map fst binds) (map fst tsAndcs))
+    (tbody, cs') <- collectConstrain body env'
+    return (tbody, foldr ((++) . snd) cs' tsAndcs)
 
-collectConstrain cnt (App f args) env = 
-    let (cnt', tf: targs, cs) = collectFromEs cnt (f:args) env
-        te = TVar cnt'
-    in (cnt'+1, te, (tf, TyFunc targs te) : cs)
+collectConstrain (Lambda ps body) env = do
+    tvs <- replicateM (length ps) newTVar
+    let env' = extend env (Map.fromList $ zip ps tvs)
+    (tbody, cs) <- collectConstrain body env'
+    return (TyFunc tvs tbody, cs)
 
-collectConstrain cnt (BPrim op e1 e2) env = 
+
+collectConstrain (App f args) env = do
+    (fty, fcs) <- collectConstrain f env
+    argsTsCs <- mapM (`collectConstrain` env) args
+    te <- newTVar
+    return (te, (fty, TyFunc (map fst argsTsCs) te) : foldr ((++) . snd) fcs argsTsCs)
+
+collectConstrain (BPrim op e1 e2) env = 
     case op of 
       LC.Add -> check TyInt TyInt
       LC.Sub -> check TyInt TyInt
@@ -59,22 +63,14 @@ collectConstrain cnt (BPrim op e1 e2) env =
       LC.And -> check TyBool TyBool
       LC.Or -> check TyBool TyBool
       where
-      check tyRand tyAns = let (cnt', [t1, t2] , cs) = collectFromEs cnt [e1,e2] env
-        in (cnt',tyAns, [(t1, tyRand), (t2, tyRand)] ++ cs)
+          check tyRand tyAns = do
+            (ty1, cs1) <- collectConstrain e1 env
+            (ty2, cs2) <- collectConstrain e2 env
+            return (tyAns, [(ty1, tyRand), (ty2, tyRand)] ++ cs1 ++ cs2)
 
-collectConstrain cnt (UPrim op e) env = 
+collectConstrain (UPrim op e) env = 
     case op of 
-      Not -> let (cnt', t, cs) = collectConstrain cnt e env
-              in (cnt', TyBool, (t,  TyBool):cs)
-
-
-
-collectFromEs :: Int -> [Expr] -> Environment -> (Int, [LC.Type], Constrains)
-collectFromEs cnt [] _ = (cnt, [], [])
-collectFromEs cnt (e: es) env =
-    let (cnt', ty, cs) = collectConstrain cnt e env
-        (cnt'', ts, cs') = collectFromEs cnt' es env
-    in (cnt'', ty:ts, cs ++ cs')
+      Not -> do { (ty, cs) <- collectConstrain e env; return (TyBool, (ty, TyBool): cs) }
 
 
 type Subst = [(Int, LC.Type)]
@@ -96,7 +92,7 @@ solveConstrain (c:cs) sts =
 
 
 infer :: Expr -> LC.Type
-infer expr = let (_, ty, cs) = collectConstrain 0 expr []
+infer expr = let ((ty, cs), _) = runState (collectConstrain expr []) 0
                  sts = solveConstrain cs []
                  applySubst TyBool _ = TyBool
                  applySubst TyInt _ = TyInt
