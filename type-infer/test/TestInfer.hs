@@ -54,7 +54,10 @@ polyInferTest = TestList
     [TestCase $ assertExprType2 "(let ((h (lambda (f)\
                                             \(let ((g f))\
                                                 \(g 42)))))\
-                                      \(h (lambda (x) (* x x))))"  TyInt
+                                      \(h (lambda (x) (* x x))))"  TyInt,
+     TestCase $ assertExprType2 "(let ((id (lambda (x) x))\
+                                      \(b2i (lambda (x) (if x 1 0))))\
+                                      \(+ (b2i (id #t)) (id 4)))" TyInt
     ]
 
 main = do
