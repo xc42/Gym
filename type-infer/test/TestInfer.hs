@@ -35,8 +35,8 @@ parserTest = TestList
                           (Let [("x", Number 1), ("y", App (Var "f") [Var "x"])]
                                (BPrim LC.GT (Var "x") (Var "y"))) ]
 
-inferTest :: Test
-inferTest = TestList 
+basicInferTest :: Test
+basicInferTest = TestList 
     [TestCase $ assertExprType (Number 4) TyInt,
      TestCase $ assertExprType (Boolean True) TyBool,
      TestCase $ assertExprType (If (Boolean True) (Number 2) (Number 1)) TyInt,
@@ -46,15 +46,18 @@ inferTest = TestList
      TestCase $ assertExprType2 "((lambda (x) x) 0)" TyInt,
      TestCase $ assertExprType2 "(lambda (x) (* x x))" (TyFunc [TyInt] TyInt),
      TestCase $ assertExprType2 "(lambda (x y) (+ x y))" (TyFunc [TyInt, TyInt] TyInt),
-     TestCase $ assertExprType2 "(let ((id (lambda (x) x))) (let ((y (id #t))) id))" (TyFunc [TyBool] TyBool),
-     TestCase $ assertExprType2 "(let ((c (lambda (f g)\
-                                            \(lambda (x) (f (g x)))))\
-                                        \(id (lambda (x) x)))\
-                                            \(let ((v (id 0)))\
-                                                \(c id id)))" (TyFunc [TyInt] TyInt)
+     TestCase $ assertExprType2 "(let ((id (lambda (x) x))) (let ((y (id #t))) y))" TyBool
      ]
+
+polyInferTest :: Test
+polyInferTest = TestList
+    [TestCase $ assertExprType2 "(let ((h (lambda (f)\
+                                            \(let ((g f))\
+                                                \(g 42)))))\
+                                      \(h (lambda (x) (* x x))))"  TyInt
+    ]
 
 main = do
     runTestTT parserTest
-    runTestTT inferTest
-
+    runTestTT basicInferTest
+    runTestTT polyInferTest

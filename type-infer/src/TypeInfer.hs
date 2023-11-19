@@ -3,6 +3,8 @@ module TypeInfer where
 import LangCore as LC
 import Control.Monad.State
 import qualified Data.Map as Map
+import qualified Data.IntMap as IntMap
+import qualified Data.IntSet as IntSet
 import Text.Printf
 
 type Frame          = Map.Map String LC.Type
@@ -19,21 +21,53 @@ extend env f = f : env
 newTVar :: State Int LC.Type
 newTVar = state (\cnt-> (TVar cnt, cnt+1))
 
+generalize :: LC.Type -> Int -> LC.Type
+generalize TyBool _ = TyBool
+generalize TyInt _  = TyInt
+generalize (TVar v) t0 =  if v < t0 then TVar v else QVar v
+generalize (QVar v) _ = QVar v
+generalize (TyFunc args rty) t0 = TyFunc args' rty'
+    where rty':args' = map (`generalize` t0) (rty:args)
+
+
+instanitiate :: LC.Type -> State Int LC.Type
+instanitiate TyBool = return TyBool
+instanitiate TyInt  = return TyInt
+instanitiate (TVar v) = return $ TVar v
+instanitiate (QVar v) = newTVar
+instanitiate tyFn@(TyFunc args rty) =
+    let qvs = scanQ IntSet.empty tyFn
+        nq  = IntSet.size qvs
+    in do 
+        tvs <- replicateM nq newTVar
+        let imap = IntMap.fromList $ zip (IntSet.toList qvs) tvs
+        return $ instQ imap tyFn
+    where scanQ acc (QVar v) = IntSet.insert v acc
+          scanQ acc (TyFunc args rty) = foldl scanQ acc (rty:args)
+          scanQ acc _ = IntSet.empty
+          instQ imap (QVar v) = IntMap.findWithDefault (TVar (-1)) v imap
+          instQ imap (TyFunc args rty) = TyFunc (map (instQ imap) args) (instQ imap rty)
+          instQ imap ty = ty
+
+
 collectConstrain :: Expr -> Environment  -> State Int (LC.Type, Constrains)
 collectConstrain (Number _) _  = return (TyInt, [])
 collectConstrain (Boolean _) _ = return (TyBool, [])
-collectConstrain (Var name) env = return (lookupEnv env name, [])
+collectConstrain (Var name) env = do { ity <- instanitiate $ lookupEnv env name; return (ity, []) }
 collectConstrain (If e1 e2 e3) env = do 
-    (ty1, cs1) <- collectConstrain e1 env 
+    (ty1, cs1) <- collectConstrain e1 env
     (ty2, cs2) <- collectConstrain e2 env
     (ty3, cs3) <- collectConstrain e3 env
     return (ty2, [(ty1, TyBool), (ty2, ty3)] ++ cs1 ++ cs2 ++ cs3)
 
-collectConstrain (Let binds body) env = do 
+collectConstrain (Let binds body) env = do
     tsAndcs <- mapM ((`collectConstrain` env) . snd) binds
-    let env' = extend env (Map.fromList $ zip (map fst binds) (map fst tsAndcs))
+    t0 <- get
+    let ts   = map ((`generalize` t0) . fst) tsAndcs
+    let css  = map snd tsAndcs
+    let env' = extend env (Map.fromList $ zip (map fst binds) ts)
     (tbody, cs') <- collectConstrain body env'
-    return (tbody, foldr ((++) . snd) cs' tsAndcs)
+    return (tbody, foldr (++) cs' css)
 
 collectConstrain (Lambda ps body) env = do
     tvs <- replicateM (length ps) newTVar

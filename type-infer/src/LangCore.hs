@@ -1,5 +1,6 @@
 module LangCore where
 
+
 data Expr = 
     Number Int
       | Boolean Bool
@@ -27,6 +28,5 @@ data Type =
       | TyBool
       | TyFunc [Type] Type
       | TVar Int
+      | QVar Int
       deriving (Show, Eq)
-
-
