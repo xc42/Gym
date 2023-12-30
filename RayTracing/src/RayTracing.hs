@@ -5,6 +5,7 @@ import Linear.V3
 import Linear.Vector ( (^*), (*^) )
 import Linear.Metric (dot)
 import Graphics.Image as Img
+import System.IO
 
 type V3f = V3 Float
 type Point3f = V3 Float
@@ -38,10 +39,14 @@ renderWorld :: (Object o) => Point3f -> Float -> Int -> Int -> Float -> o -> Ima
 renderWorld camera aspectRatio vpW imgW focal obj = 
     let vpH = fromIntegral vpW / aspectRatio
         imgH = fromIntegral imgW / aspectRatio
-        pixelO = camera - 0.5 * V3 (fromIntegral vpW) vpH 0.0 + V3 0.0 0.0 focal
         scaleRatio = vpH / imgH :: Float
-        toWorldCoord i j = pixelO + scaleRatio *^ fmap fromIntegral (V3 i (-j) 0)
-        renderPixel (row, col) = let coord = toWorldCoord col row
+        u = V3 scaleRatio 0.0 0.0
+        v = V3 0.0 (-scaleRatio) 0.0
+        pixelO = camera + V3 (-0.5 * fromIntegral vpW) (0.5 * vpH) focal
+        toWorldCoord row col = pixelO + fromIntegral row *^ v + fromIntegral col *^ u
+
+        renderPixel :: (Int, Int) -> Pixel RGB Double
+        renderPixel (row, col) = let coord = toWorldCoord row col
                                      ray  = Ray camera (coord - camera)
                             in case hitTest ray obj of
                                  Just (Hit p norm front) -> PixelRGB 0.0 1.0 0.0
