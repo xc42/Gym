@@ -2,9 +2,10 @@ module RayTracing  where
 
 import Linear.Affine
 import Linear.V3
-import Linear.Vector ( (^*), (*^) )
-import Linear.Metric (dot)
-import Graphics.Image as Img
+import Linear.Vector ( (^*), (*^))
+import Linear.Metric 
+
+import Graphics.Image as Img hiding (normalize)
 import System.IO
 
 type V3f = V3 Float
@@ -32,7 +33,7 @@ instance Object Sphere where
               then Nothing 
               else let t = (-b + sqrt det) / a
                        hp = rA + t *^ rb
-                    in Just $ Hit hp 0.0 True
+                    in Just $ Hit hp (signorm (hp - sC)) False
 
 
 renderWorld :: (Object o) => Point3f -> Float -> Int -> Int -> Float -> o -> Image VS RGB Double
@@ -49,8 +50,11 @@ renderWorld camera aspectRatio vpW imgW focal obj =
         renderPixel (row, col) = let coord = toWorldCoord row col
                                      ray  = Ray camera (coord - camera)
                             in case hitTest ray obj of
-                                 Just (Hit p norm front) -> PixelRGB 0.0 1.0 0.0
-                                 Nothing -> PixelRGB 0.0 0.0 (fromIntegral row) / fromIntegral imgW
+                                 Just (Hit p nm front) -> let dir = p - camera
+                                                              density = realToFrac $ (dir `dot` nm) / norm dir
+                                                             in PixelRGB density density density
+
+                                 Nothing -> PixelRGB 0.5 0.5 (fromIntegral row) / fromIntegral imgW
     in 
         makeImageR VS (round imgH, imgW) renderPixel
 
